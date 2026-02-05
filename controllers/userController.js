@@ -2,8 +2,8 @@ import User from "../models/userModel.js"
 
 export const getuser=async(req,res)=>{
    try {
-   const data=await User.find()
-   res.json({result:data})
+    const data=await User.find().select('-password')
+    res.json({result:data})
    } catch (error) {
     res.json({msg:error})
    }
@@ -38,3 +38,18 @@ export const getuserbyid=async(req,res)=>{
     res.json({msg:error})
    }
 }
+
+export const uploadAvatar = async (req, res) => {
+    try {
+        const id = req.params.id
+        if (!req.file) return res.status(400).json({ msg: 'File required' })
+        const file = req.file
+        const url = `${req.protocol}://${req.get('host')}/uploads/${file.filename}`
+        const updated = await User.findByIdAndUpdate(id, { avatar: url }, { new: true }).select('-password')
+        res.json({ msg: 'avatar updated', user: updated })
+    } catch (err) {
+        console.error('uploadAvatar error', err)
+        res.status(500).json({ msg: 'Server error' })
+    }
+}
+

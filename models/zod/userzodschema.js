@@ -5,6 +5,6 @@ const userzodschema=z.object({
     // email:z.email().toLowerCase(),
     email:z.string().regex(/\S+@\S+\.\S+/).toLowerCase(),
     password:z.string().min(6),
-    Role:z.enum(["Developer","Sales"])
+    Role:z.enum(["Developer","Sales","User","Admin"])
 })
 export default userzodschema

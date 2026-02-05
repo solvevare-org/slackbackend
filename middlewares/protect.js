@@ -5,6 +5,7 @@ const protect=(req,res,next)=>{
     const token=beartoken.split(" ")
     const actualtokn=token[1]
       const result=  jwt.verify(actualtokn,process.env.ACCESS_SECRET)
+       req.user = result
        next()
     } catch (error) {
         res.json({msg:"unAutherized Access"})

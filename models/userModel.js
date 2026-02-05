@@ -8,6 +8,10 @@ const userSchema = new Schema({
     required: [true, "Name is required"],
     minlength: [5, "Name must have at least 5 letters"]
   },
+  fullName: {
+    type: String,
+    required: false
+  },
   email: {
     type: String,
     required: [true, "Email is required"],
@@ -24,9 +28,14 @@ const userSchema = new Schema({
     type: String,
     required: [true, "Role is required"],
     enum: {
-      values: ["Developer", "Sales"],
-      message: "Role must be either 'Developer' or 'Sales'"
+      values: ["Developer", "Sales","User","Admin"],
+      message: "Role must be either 'Developer', 'Sales', 'User', or 'Admin'"
     }
+  }
+  ,
+  avatar: {
+    type: String,
+    required: false
   }
 });
 
