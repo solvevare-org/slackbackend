@@ -39,6 +39,8 @@ dbConnect().then(()=>{
 
   // map of userId -> socketId
   const onlineUsers = new Map()
+  // map of userId -> lastSeen timestamp (ms)
+  const lastSeen = new Map()
   // expose io and onlineUsers to app for route handlers
   app.set('io', io)
   app.set('onlineUsers', onlineUsers)
@@ -64,6 +66,14 @@ dbConnect().then(()=>{
         socketUser = payload
         onlineUsers.set(String(payload.id), socket.id)
         socket.user = payload
+        // send current online list and lastSeen map to the newly connected socket
+        try {
+          socket.emit('online-list', { online: Array.from(onlineUsers.keys()), lastSeen: Object.fromEntries(lastSeen) })
+        } catch (e) {}
+        // broadcast to other clients that this user is now online
+        try {
+          io.emit('user-online', String(payload.id))
+        } catch (e) {}
       } catch (e) {
         console.log('socket auth failed', e.message)
         socket.disconnect(true)
@@ -98,10 +108,25 @@ dbConnect().then(()=>{
     })
 
     socket.on('disconnect', () => {
-      // remove user from map if present
-      for (const [uid, sid] of onlineUsers.entries()) {
-        if (sid === socket.id) onlineUsers.delete(uid)
-      }
+      // remove user from map if present and notify others
+      try {
+        if (socket.user && socket.user.id) {
+          const uid = String(socket.user.id)
+          onlineUsers.delete(uid)
+          const ts = Date.now()
+          lastSeen.set(uid, ts)
+          io.emit('user-offline', { id: uid, lastSeen: ts })
+        } else {
+          for (const [uid, sid] of onlineUsers.entries()) {
+            if (sid === socket.id) {
+              onlineUsers.delete(uid)
+              const ts = Date.now()
+              lastSeen.set(uid, ts)
+              io.emit('user-offline', { id: uid, lastSeen: ts })
+            }
+          }
+        }
+      } catch (e) {}
     })
   })
 
