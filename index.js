@@ -9,6 +9,8 @@ import cors from "cors";
 import http from 'http'
 import { Server } from 'socket.io'
 import Message from './models/messageModel.js'
+import Group from './models/groupModel.js'
+import GroupMessage from './models/groupMessageModel.js'
 import jwt from 'jsonwebtoken'
 import User from './models/userModel.js'
 import fs from 'fs'
@@ -66,6 +68,14 @@ dbConnect().then(()=>{
         socketUser = payload
         onlineUsers.set(String(payload.id), socket.id)
         socket.user = payload
+        // join socket to all groups the user is member of
+        try {
+          Group.find({ members: payload.id }).select('_id').lean().then(groups => {
+            groups.forEach(g => {
+              try { socket.join(String(g._id)) } catch(e){}
+            })
+          }).catch(()=>{})
+        } catch(e){}
         // send current online list and lastSeen map to the newly connected socket
         try {
           socket.emit('online-list', { online: Array.from(onlineUsers.keys()), lastSeen: Object.fromEntries(lastSeen) })
@@ -105,6 +115,37 @@ dbConnect().then(()=>{
       } catch (err) {
         console.error('private message error', err)
       }
+    })
+
+    socket.on('group message', async ({ content, group: groupId }) => {
+      try {
+        const fromId = socket.user.id
+        const fromName = socket.user.name || ''
+        const group = await Group.findById(groupId)
+        if (!group) return
+
+        // permission: if community and onlyAdminCanPost true -> check admin
+        if (group.type === 'community' && group.onlyAdminCanPost) {
+          const isAdmin = (group.admins || []).map(String).includes(String(fromId))
+          if (!isAdmin) return
+        }
+
+        const gm = new GroupMessage({ from: fromId, group: groupId, content })
+        const saved = await gm.save()
+
+        const payload = { content, from: fromId, fromName, group: groupId, createdAt: saved.createdAt }
+        // emit to group room
+        io.to(String(groupId)).emit('group message', payload)
+      } catch (err) {
+        console.error('group message error', err)
+      }
+    })
+
+    // allow client to explicitly join a group room (useful right after creation)
+    socket.on('join group', (groupId) => {
+      try {
+        if (groupId) socket.join(String(groupId))
+      } catch (e) {}
     })
 
     socket.on('disconnect', () => {
