@@ -1,0 +1,240 @@
+
+
+import express, { Router } from "express";
+import dotenv from "dotenv";
+import router from "./router/router.js";
+import dbConnect from "./db/connect.js";
+import cookie from "cookie-parser";
+import cors from "cors";
+import http from 'http'
+import { Server } from 'socket.io'
+import Message from './models/messageModel.js'
+import Group from './models/groupModel.js'
+import GroupMessage from './models/groupMessageModel.js'
+import jwt from 'jsonwebtoken'
+import User from './models/userModel.js'
+import fs from 'fs'
+import path from 'path'
+import { fileURLToPath } from 'url'
+
+// ensure we load .env relative to this file (works even when node cwd differs)
+const __filename = fileURLToPath(import.meta.url)
+const __dirname = path.dirname(__filename)
+
+dotenv.config({ path: path.join(__dirname, '.env') })
+const app=express()
+app.use(express.json())
+app.use(cookie())
+
+app.use(cors({
+  origin: "http://localhost:5173", // your frontend port
+  credentials: true
+}));
+
+
+app.use('/api', router)
+// Also mount router at root to support legacy requests to /auth/*
+app.use(router)
+const PORT = process.env.PORT || 9000
+dbConnect().then(()=>{
+  const server = http.createServer(app)
+  const io = new Server(server, {
+    cors: {
+      origin: process.env.FRONTEND_URL || 'http://localhost:5173',
+      methods: ['GET','POST']
+    }
+  })
+
+  // map of userId -> socketId
+  const onlineUsers = new Map()
+  // map of userId -> lastSeen timestamp (ms)
+  const lastSeen = new Map()
+  // expose io and onlineUsers to app for route handlers
+  app.set('io', io)
+  app.set('onlineUsers', onlineUsers)
+
+  // serve uploaded files
+  const uploadsPath = path.join(process.cwd(), 'BACKEND', 'uploads')
+  try {
+    fs.mkdirSync(uploadsPath, { recursive: true })
+  } catch (e) {
+    console.error('Failed creating uploads directory', e)
+  }
+  // serve uploaded files and force download by setting Content-Disposition
+  app.use('/uploads', express.static(uploadsPath, {
+    setHeaders: (res, filePath) => {
+      try {
+        // force browsers to download attachments rather than open inline
+        res.setHeader('Content-Disposition', 'attachment')
+      } catch (e) {}
+    }
+  }))
+
+  io.on('connection', (socket) => {
+    console.log('socket connected', socket.id)
+
+    // authenticate socket via token in handshake
+    const token = socket.handshake?.auth?.token
+    let socketUser = null
+    if (token) {
+      try {
+        const payload = jwt.verify(token, process.env.ACCESS_SECRET)
+        socketUser = payload
+        onlineUsers.set(String(payload.id), socket.id)
+        socket.user = payload
+        // join socket to all groups the user is member of
+        try {
+          Group.find({ members: payload.id }).select('_id').lean().then(groups => {
+            groups.forEach(g => {
+              try { socket.join(String(g._id)) } catch(e){}
+            })
+          }).catch(()=>{})
+          // also join workspace rooms the user is member of
+          try {
+            import('./models/workspaceModel.js').then(({ default: Workspace }) => {
+              Workspace.find({ members: payload.id }).select('_id').lean().then(wss => {
+                wss.forEach(w => { try { socket.join(String(w._id)) } catch(e){} })
+              }).catch(()=>{})
+            }).catch(()=>{})
+          } catch(e) {}
+        } catch(e){}
+        // send current online list and lastSeen map to the newly connected socket
+        try {
+          socket.emit('online-list', { online: Array.from(onlineUsers.keys()), lastSeen: Object.fromEntries(lastSeen) })
+        } catch (e) {}
+        // broadcast to other clients that this user is now online
+        try {
+          io.emit('user-online', String(payload.id))
+        } catch (e) {}
+      } catch (e) {
+        console.log('socket auth failed', e.message)
+        socket.disconnect(true)
+        return
+      }
+    } else {
+      // no token provided; disconnect
+      socket.disconnect(true)
+      return
+    }
+
+    socket.on('private message', async ({ content, to, file, workspaceId }) => {
+      try {
+        const fromId = socket.user.id
+        const fromName = socket.user.name || ''
+        const targetSocket = onlineUsers.get(String(to))
+
+        console.log('private message received', { from: fromId, to, workspaceId, content: content ? String(content).slice(0,200) : null, hasFile: !!file })
+
+        // persist message (include file metadata and workspace if provided)
+        const payloadDoc = { from: fromId, to, content }
+        if (workspaceId) payloadDoc.workspace = workspaceId
+        if (file && typeof file === 'object') payloadDoc.file = file
+
+        const m = new Message(payloadDoc)
+        const saved = await m.save()
+        if (!saved || !saved._id) {
+          console.error('Failed to save message', { payloadDoc })
+          socket.emit('error', { msg: 'Failed to save message' })
+          return
+        }
+
+        console.log('message saved', { id: String(saved._id) })
+
+        // construct payload matching API GET shape
+        const out = {
+          id: saved._id,
+          from: String(saved.from),
+          fromName,
+          to: String(saved.to),
+          content: saved.content,
+          file: saved.file || null,
+          workspace: saved.workspace ? String(saved.workspace) : null,
+          createdAt: saved.createdAt
+        }
+
+        // emit to recipient if online AND their socket is joined to the same workspace room (enforces workspace separation)
+        if (targetSocket && io) {
+          if (saved.workspace) {
+            const room = io.sockets.adapter.rooms.get(String(saved.workspace))
+            if (room && room.has(targetSocket)) io.to(targetSocket).emit('private message', out)
+          } else {
+            // fallback: send directly
+            io.to(targetSocket).emit('private message', out)
+          }
+        }
+
+        // echo back to sender
+        socket.emit('private message', out)
+      } catch (err) {
+        console.error('private message error', err)
+        try { socket.emit('error', { msg: 'private message failed', error: String(err) }) } catch(e){}
+      }
+    })
+
+    socket.on('group message', async ({ content, group: groupId }) => {
+      try {
+        const fromId = socket.user.id
+        const fromName = socket.user.name || ''
+        const group = await Group.findById(groupId)
+        if (!group) return
+
+        // permission: if community and onlyAdminCanPost true -> check admin
+        if (group.type === 'community' && group.onlyAdminCanPost) {
+          const isAdmin = (group.admins || []).map(String).includes(String(fromId))
+          if (!isAdmin) return
+        }
+
+        const gm = new GroupMessage({ from: fromId, group: groupId, content })
+        const saved = await gm.save()
+
+        const payload = { content, from: fromId, fromName, group: groupId, createdAt: saved.createdAt }
+        // emit to group room
+        io.to(String(groupId)).emit('group message', payload)
+      } catch (err) {
+        console.error('group message error', err)
+      }
+    })
+
+    // allow client to explicitly join a group room (useful right after creation)
+    socket.on('join group', (groupId) => {
+      try {
+        if (groupId) socket.join(String(groupId))
+      } catch (e) {}
+    })
+
+    socket.on('disconnect', () => {
+      // remove user from map if present and notify others
+      try {
+        if (socket.user && socket.user.id) {
+          const uid = String(socket.user.id)
+          onlineUsers.delete(uid)
+          const ts = Date.now()
+          lastSeen.set(uid, ts)
+          io.emit('user-offline', { id: uid, lastSeen: ts })
+        } else {
+          for (const [uid, sid] of onlineUsers.entries()) {
+            if (sid === socket.id) {
+              onlineUsers.delete(uid)
+              const ts = Date.now()
+              lastSeen.set(uid, ts)
+              io.emit('user-offline', { id: uid, lastSeen: ts })
+            }
+          }
+        }
+      } catch (e) {}
+    })
+  })
+
+  server.listen(PORT, ()=>{
+    console.log(`server running `+PORT)
+  })
+  server.on('error', (err) => {
+    if (err && err.code === 'EADDRINUSE') {
+      console.error(`Port ${PORT} is already in use. Kill the process using that port or set a different PORT in your .env and restart.`)
+      process.exit(1)
+    } else {
+      console.error('Server error', err)
+      process.exit(1)
+    }
+  })
+})
