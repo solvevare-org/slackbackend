@@ -1,5 +1,5 @@
 import express from 'express';
-import { createWorkspace, getWorkspaces, getWorkspace } from '../controllers/workspaceController.js';
+import { createWorkspace, getWorkspaces, getWorkspace, deleteWorkspace } from '../controllers/workspaceController.js';
 import protect from '../middlewares/protect.js';
 
 const router = express.Router();
@@ -12,5 +12,8 @@ router.get('/', protect, getWorkspaces);
 
 // Get single workspace
 router.get('/:id', protect, getWorkspace);
+
+// Delete workspace (admin only)
+router.delete('/:id', protect, deleteWorkspace);
 
 export default router;

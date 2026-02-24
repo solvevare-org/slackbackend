@@ -1,7 +1,7 @@
 
 
 import { Router } from "express";
-import { login, refresh, register } from "../controllers/authController.js";
+import { login, refresh, register, googleAuth, googleCallback } from "../controllers/authController.js";
 import validate from "../middlewares/validate.js";
 import userzodschema from "../models/zod/userzodschema.js";
 import protect from "../middlewares/protect.js";
@@ -14,6 +14,9 @@ authroutes.post("/signup",validate(userzodschema),register)//apply middleware
 //log in 
 authroutes.post("/login",login)
 
+// Google OAuth
+authroutes.get('/google', googleAuth)
+authroutes.get('/google/callback', googleCallback)
 
 authroutes.get("/refresh",refresh)
 // invite routes

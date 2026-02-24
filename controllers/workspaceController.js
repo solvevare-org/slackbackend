@@ -1,4 +1,6 @@
 import Workspace from '../models/workspaceModel.js';
+import Group from '../models/groupModel.js';
+import Message from '../models/messageModel.js';
 
 // Create a new workspace
 export const createWorkspace = async (req, res) => {
@@ -55,3 +57,50 @@ export const getWorkspace = async (req, res) => {
     res.status(500).json({ success: false, message: 'Server error' })
   }
 }
+
+// Delete workspace (admin only)
+export const deleteWorkspace = async (req, res) => {
+  try {
+    const id = req.params.id;
+    if (!id) return res.status(400).json({ success: false, msg: 'Missing id' });
+    
+    const userId = req.user?.id || req.user?._id;
+    const userRole = (req.user?.Role || req.user?.role || '').toString().toLowerCase();
+    
+    if (!userId) return res.status(401).json({ success: false, msg: 'Unauthorized' });
+    if (userRole !== 'admin') return res.status(403).json({ success: false, msg: 'Only admins can delete workspaces' });
+    
+    const ws = await Workspace.findById(id);
+    if (!ws) return res.status(404).json({ success: false, msg: 'Workspace not found' });
+    
+    // Delete all channels in this workspace
+    const channels = await Group.find({ workspace: id });
+    for (const channel of channels) {
+      // Delete all messages in each channel
+      await Message.deleteMany({ group: channel._id });
+    }
+    await Group.deleteMany({ workspace: id });
+    
+    // Delete the workspace
+    await Workspace.findByIdAndDelete(id);
+    
+    // Emit real-time update to all workspace members
+    try {
+      const io = req.app.get('io');
+      const onlineUsers = req.app.get('onlineUsers');
+      if (io && ws.members) {
+        ws.members.forEach(memberId => {
+          const socketId = onlineUsers && onlineUsers.get(String(memberId));
+          if (socketId) {
+            io.to(socketId).emit('workspace-deleted', { workspaceId: id });
+          }
+        });
+      }
+    } catch (e) {}
+    
+    res.json({ success: true, msg: 'Workspace deleted successfully' });
+  } catch (err) {
+    console.error('deleteWorkspace', err);
+    res.status(500).json({ success: false, msg: 'Server error' });
+  }
+};

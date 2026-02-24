@@ -41,8 +41,10 @@ dbConnect().then(()=>{
   const io = new Server(server, {
     cors: {
       origin: process.env.FRONTEND_URL || 'http://localhost:5173',
-      methods: ['GET','POST']
-    }
+      methods: ['GET', 'POST'],
+      credentials: true
+    },
+    transports: ['websocket', 'polling']
   })
 
   // map of userId -> socketId
@@ -120,7 +122,9 @@ dbConnect().then(()=>{
     socket.on('private message', async ({ content, to, file, workspaceId }) => {
       try {
         const fromId = socket.user.id
-        const fromName = socket.user.name || ''
+        const fromUser = await User.findById(fromId).select('name avatar')
+        const fromName = fromUser?.name || ''
+        const fromAvatar = fromUser?.avatar || null
         const targetSocket = onlineUsers.get(String(to))
 
         console.log('private message received', { from: fromId, to, workspaceId, content: content ? String(content).slice(0,200) : null, hasFile: !!file })
@@ -145,6 +149,7 @@ dbConnect().then(()=>{
           id: saved._id,
           from: String(saved.from),
           fromName,
+          fromAvatar,
           to: String(saved.to),
           content: saved.content,
           file: saved.file || null,
@@ -174,7 +179,9 @@ dbConnect().then(()=>{
     socket.on('group message', async ({ content, group: groupId }) => {
       try {
         const fromId = socket.user.id
-        const fromName = socket.user.name || ''
+        const fromUser = await User.findById(fromId).select('name avatar')
+        const fromName = fromUser?.name || ''
+        const fromAvatar = fromUser?.avatar || null
         const group = await Group.findById(groupId)
         if (!group) return
 
@@ -187,7 +194,7 @@ dbConnect().then(()=>{
         const gm = new GroupMessage({ from: fromId, group: groupId, content })
         const saved = await gm.save()
 
-        const payload = { content, from: fromId, fromName, group: groupId, createdAt: saved.createdAt }
+        const payload = { content, from: fromId, fromName, fromAvatar, group: groupId, createdAt: saved.createdAt }
         // emit to group room
         io.to(String(groupId)).emit('group message', payload)
       } catch (err) {

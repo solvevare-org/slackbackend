@@ -4,8 +4,8 @@ import Group from '../models/groupModel.js'
 export const getGroupMessages = async (req, res) => {
   try {
     const groupId = req.params.groupId
-    const msgs = await GroupMessage.find({ group: groupId }).sort({ createdAt: 1 }).populate('from', 'name')
-    const out = msgs.map(m => ({ id: m._id, from: m.from?._id || m.from, fromName: m.from?.name || '', group: m.group, content: m.content, edited: !!m.edited, file: m.file, createdAt: m.createdAt }))
+    const msgs = await GroupMessage.find({ group: groupId }).sort({ createdAt: 1 }).populate('from', 'name avatar')
+    const out = msgs.map(m => ({ id: m._id, from: m.from?._id || m.from, fromName: m.from?.name || '', fromAvatar: m.from?.avatar || null, group: m.group, content: m.content, edited: !!m.edited, file: m.file, createdAt: m.createdAt }))
     res.json({ messages: out })
   } catch (err) {
     console.error('getGroupMessages', err)
@@ -31,8 +31,8 @@ export const updateGroupMessage = async (req, res) => {
     gm.edited = true
     await gm.save()
 
-    const populated = await GroupMessage.findById(gm._id).populate('from', 'name')
-    const payload = { id: populated._id, from: populated.from?._id || populated.from, fromName: populated.from?.name || '', group: populated.group, content: populated.content, edited: !!populated.edited, file: populated.file, createdAt: populated.createdAt }
+    const populated = await GroupMessage.findById(gm._id).populate('from', 'name avatar')
+    const payload = { id: populated._id, from: populated.from?._id || populated.from, fromName: populated.from?.name || '', fromAvatar: populated.from?.avatar || null, group: populated.group, content: populated.content, edited: !!populated.edited, file: populated.file, createdAt: populated.createdAt }
 
     const io = req.app.get('io')
     io.to(String(populated.group)).emit('message edited', payload)
@@ -90,7 +90,8 @@ export const uploadGroupFile = async (req, res) => {
 
     // emit to room
     const io = req.app.get('io')
-    io.to(String(groupId)).emit('group message', { content: saved.content, from: me, fromName: req.user?.name || '', group: groupId, file: saved.file, createdAt: saved.createdAt })
+    const fromUser = await import('../models/userModel.js').then(m => m.default.findById(me).select('name avatar'))
+    io.to(String(groupId)).emit('group message', { content: saved.content, from: me, fromName: fromUser?.name || req.user?.name || '', fromAvatar: fromUser?.avatar || null, group: groupId, file: saved.file, createdAt: saved.createdAt })
 
     res.status(201).json({ message: saved })
   } catch (err) {

@@ -1,5 +1,6 @@
 import Message from "../models/messageModel.js"
 import GroupMessage from "../models/groupMessageModel.js"
+import User from "../models/userModel.js"
 import fs from 'fs'
 import path from 'path'
 import { fileURLToPath } from 'url'
@@ -31,7 +32,7 @@ export const getMessagesBetween = async (req, res) => {
         { from: meId, to: otherId },
         { from: otherId, to: meId }
       ]
-    }).sort({ createdAt: 1 }).populate('from', 'name').populate('to', 'name')
+    }).sort({ createdAt: 1 }).populate('from', 'name avatar').populate('to', 'name avatar')
 
     console.log('getMessagesBetween: found', Array.isArray(msgs) ? msgs.length : 0)
 
@@ -41,14 +42,18 @@ export const getMessagesBetween = async (req, res) => {
       const toObj = m.to
       const fromId = fromObj?._id || fromObj
       const fromName = fromObj?.name || ''
+      const fromAvatar = fromObj?.avatar || null
       const toId = toObj?._id || toObj
       const toName = toObj?.name || ''
+      const toAvatar = toObj?.avatar || null
       return {
         id: m._id,
         from: fromId,
         fromName,
+        fromAvatar,
         to: toId,
         toName,
+        toAvatar,
         content: m.content,
         edited: !!m.edited,
         file: m.file || null,
@@ -84,13 +89,15 @@ export const updateMessage = async (req, res) => {
     m.edited = true
     await m.save()
 
-    const populated = await Message.findById(m._id).populate('from', 'name').populate('to', 'name')
+    const populated = await Message.findById(m._id).populate('from', 'name avatar').populate('to', 'name avatar')
     const payload = {
       id: populated._id,
       from: populated.from?._id || populated.from,
       fromName: populated.from?.name || '',
+      fromAvatar: populated.from?.avatar || null,
       to: populated.to?._id || populated.to,
       toName: populated.to?.name || '',
+      toAvatar: populated.to?.avatar || null,
       content: populated.content,
       edited: !!populated.edited,
       workspace: populated.workspace ? String(populated.workspace) : null,
@@ -160,12 +167,14 @@ export const uploadFile = async (req, res) => {
         const { default: pdfThumbnail } = await import('pdf-thumbnail')
         const uploadsPath = path.join(process.cwd(), 'BACKEND', 'uploads')
         const pdfPath = path.join(uploadsPath, file.filename)
-        const thumbnailFilename = `thumb_${file.filename}.png`
+        const thumbnailFilename = `thumb_${path.parse(file.filename).name}.png`
         const thumbnailPath = path.join(uploadsPath, thumbnailFilename)
         
-        const thumbnail = await pdfThumbnail(pdfPath, { width: 280, height: 200 })
+        console.log('Generating PDF thumbnail:', { pdfPath, thumbnailPath })
+        const thumbnail = await pdfThumbnail(pdfPath, { width: 280, height: 128 })
         fs.writeFileSync(thumbnailPath, thumbnail)
         thumbnailUrl = `${req.protocol}://${req.get('host')}/uploads/${thumbnailFilename}`
+        console.log('PDF thumbnail generated:', thumbnailUrl)
       } catch (err) {
         console.error('PDF thumbnail generation failed:', err)
       }
@@ -185,10 +194,12 @@ export const uploadFile = async (req, res) => {
       })
       const saved = await m.save()
 
+      const fromUser = await User.findById(meId).select('name avatar')
       const payload = {
         content: saved.content,
         from: meId,
-        fromName: req.user?.name || '',
+        fromName: fromUser?.name || req.user?.name || '',
+        fromAvatar: fromUser?.avatar || null,
         to,
         workspace: saved.workspace ? String(saved.workspace) : null,
         file: m.file,
@@ -219,10 +230,12 @@ export const uploadFile = async (req, res) => {
       })
       const saved = await gm.save()
 
+      const fromUser = await User.findById(meId).select('name avatar')
       const payload = {
         content: saved.content,
         from: meId,
-        fromName: req.user?.name || '',
+        fromName: fromUser?.name || req.user?.name || '',
+        fromAvatar: fromUser?.avatar || null,
         group,
         file: gm.file,
         createdAt: saved.createdAt

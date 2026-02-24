@@ -2,6 +2,7 @@ import User from "../models/userModel.js"
 import bcryptjs from "bcryptjs";
 import jwt from "jsonwebtoken";
 import { accessoken, refershtoken } from "../utils/token.js";
+
 export const register=async(req,res)=>{
     try {
       // console.log(req.body)
@@ -41,7 +42,8 @@ export const login = async (req, res) => {
         id: result._id,
         email: result.email,
         name: result.name,
-        role: result.Role
+        role: result.Role,
+        avatar: result.avatar
       },
     });
 
@@ -50,6 +52,87 @@ export const login = async (req, res) => {
   }
 };
 
+export const googleAuth = async (req, res) => {
+  try {
+    const clientId = process.env.GOOGLE_CLIENT_ID;
+    
+    // Check if Google OAuth is configured
+    if (!clientId || clientId === 'your_google_client_id_here') {
+      return res.status(400).json({ 
+        msg: 'Google OAuth not configured. Please add GOOGLE_CLIENT_ID to .env file' 
+      });
+    }
+    
+    // Redirect to Google OAuth
+    const backendUrl = process.env.BACKEND_URL || 'http://localhost:9000';
+    const redirectUri = encodeURIComponent(`${backendUrl}/api/auth/google/callback`);
+    const scope = encodeURIComponent('email profile');
+    const googleAuthUrl = `https://accounts.google.com/o/oauth2/v2/auth?client_id=${clientId}&redirect_uri=${redirectUri}&response_type=code&scope=${scope}`;
+    res.redirect(googleAuthUrl);
+  } catch (error) {
+    console.error('Google auth error:', error);
+    res.status(500).json({ msg: 'Google auth failed' });
+  }
+};
+
+export const googleCallback = async (req, res) => {
+  try {
+    const { code } = req.query;
+    if (!code) return res.redirect('http://localhost:5173/login?error=no_code');
+
+    const clientId = process.env.GOOGLE_CLIENT_ID;
+    const clientSecret = process.env.GOOGLE_CLIENT_SECRET;
+    
+    if (!clientId || !clientSecret) {
+      return res.redirect('http://localhost:5173/login?error=oauth_not_configured');
+    }
+
+    // Exchange code for tokens
+    const backendUrl = process.env.BACKEND_URL || 'http://localhost:9000';
+    const tokenResponse = await fetch('https://oauth2.googleapis.com/token', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: new URLSearchParams({
+        code,
+        client_id: clientId,
+        client_secret: clientSecret,
+        redirect_uri: `${backendUrl}/api/auth/google/callback`,
+        grant_type: 'authorization_code'
+      })
+    });
+
+    const tokens = await tokenResponse.json();
+    if (!tokens.access_token) return res.redirect('http://localhost:5173/login?error=token_failed');
+
+    // Get user info
+    const userInfoResponse = await fetch('https://www.googleapis.com/oauth2/v2/userinfo', {
+      headers: { Authorization: `Bearer ${tokens.access_token}` }
+    });
+
+    const googleUser = await userInfoResponse.json();
+    if (!googleUser.email) return res.redirect('http://localhost:5173/login?error=no_email');
+
+    // Check if user exists in database
+    const lookupEmail = String(googleUser.email).toLowerCase();
+    const user = await User.findOne({ email: lookupEmail });
+
+    if (!user) {
+      return res.redirect('http://localhost:5173/login?error=not_invited');
+    }
+
+    // Generate tokens
+    const refresh = refershtoken(user);
+    const access = accessoken(user);
+
+    res.cookie('refcookie', refresh, { httpOnly: true });
+
+    // Redirect to frontend with token
+    res.redirect(`http://localhost:5173/auth/callback?token=${access}&user=${encodeURIComponent(JSON.stringify({ id: user._id, email: user.email, name: user.name, role: user.Role, avatar: user.avatar }))}`);
+  } catch (error) {
+    console.error('Google callback error:', error);
+    res.redirect('http://localhost:5173/login?error=server_error');
+  }
+};
 
 export const refresh=(req,res)=>{
 try {
