@@ -9,6 +9,9 @@ const workspaceSchema = new mongoose.Schema({
   description: {
     type: String
   },
+  image: {
+    type: String
+  },
   createdBy: {
     type: mongoose.Schema.Types.ObjectId,
     ref: 'User',

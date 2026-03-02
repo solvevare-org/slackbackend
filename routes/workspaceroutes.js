@@ -1,11 +1,11 @@
 import express from 'express';
-import { createWorkspace, getWorkspaces, getWorkspace, deleteWorkspace } from '../controllers/workspaceController.js';
+import { createWorkspace, getWorkspaces, getWorkspace, deleteWorkspace, upload } from '../controllers/workspaceController.js';
 import protect from '../middlewares/protect.js';
 
 const router = express.Router();
 
 // Create a new workspace
-router.post('/', protect, createWorkspace);
+router.post('/', protect, upload.single('image'), createWorkspace);
 
 // Get all workspaces
 router.get('/', protect, getWorkspaces);

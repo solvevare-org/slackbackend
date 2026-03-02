@@ -22,25 +22,58 @@ const __filename = fileURLToPath(import.meta.url)
 const __dirname = path.dirname(__filename)
 
 dotenv.config({ path: path.join(__dirname, '.env') })
-const app=express()
+const app = express()
 app.use(express.json())
 app.use(cookie())
 
-app.use(cors({
-  origin: "http://localhost:5173", // your frontend port
-  credentials: true
-}));
+app.use((req, res, next) => {
+  const origin = req.headers.origin;
+  console.log(`[CORS DEBUG] Request from Origin: ${origin} | Method: ${req.method} | URL: ${req.url}`);
+
+  const allowedOrigins = [
+    process.env.FRONTEND_URL,
+    "http://localhost:6007",
+    "http://localhost:5173",
+    "http://72.60.97.98:6007",
+    "http://127.0.0.1:6007"
+  ].filter(Boolean);
+
+  if (allowedOrigins.includes(origin) || (origin && origin.startsWith('http://localhost:'))) {
+    res.setHeader('Access-Control-Allow-Origin', origin);
+  } else if (!origin) {
+    // Allow server-to-server
+    res.setHeader('Access-Control-Allow-Origin', '*');
+  } else {
+    // For security, if not in whitelist but we want it working for the user for now:
+    res.setHeader('Access-Control-Allow-Origin', origin);
+  }
+
+  res.setHeader('Access-Control-Allow-Credentials', 'true');
+  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
+  res.setHeader('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept, Authorization, token');
+
+  if (req.method === 'OPTIONS') {
+    return res.status(200).end();
+  }
+  next();
+});
 
 
 app.use('/api', router)
 // Also mount router at root to support legacy requests to /auth/*
 app.use(router)
 const PORT = process.env.PORT || 9000
-dbConnect().then(()=>{
+dbConnect().then(() => {
   const server = http.createServer(app)
   const io = new Server(server, {
     cors: {
-      origin: process.env.FRONTEND_URL || 'http://localhost:5173',
+      origin: [
+        process.env.FRONTEND_URL,
+        "http://localhost:6007",
+        "http://localhost:5173",
+        "http://72.60.97.98:6007",
+        "http://127.0.0.1:6007"
+      ].filter(Boolean),
       methods: ['GET', 'POST'],
       credentials: true
     },
@@ -68,7 +101,7 @@ dbConnect().then(()=>{
       try {
         // force browsers to download attachments rather than open inline
         res.setHeader('Content-Disposition', 'attachment')
-      } catch (e) {}
+      } catch (e) { }
     }
   }))
 
@@ -88,26 +121,26 @@ dbConnect().then(()=>{
         try {
           Group.find({ members: payload.id }).select('_id').lean().then(groups => {
             groups.forEach(g => {
-              try { socket.join(String(g._id)) } catch(e){}
+              try { socket.join(String(g._id)) } catch (e) { }
             })
-          }).catch(()=>{})
+          }).catch(() => { })
           // also join workspace rooms the user is member of
           try {
             import('./models/workspaceModel.js').then(({ default: Workspace }) => {
               Workspace.find({ members: payload.id }).select('_id').lean().then(wss => {
-                wss.forEach(w => { try { socket.join(String(w._id)) } catch(e){} })
-              }).catch(()=>{})
-            }).catch(()=>{})
-          } catch(e) {}
-        } catch(e){}
+                wss.forEach(w => { try { socket.join(String(w._id)) } catch (e) { } })
+              }).catch(() => { })
+            }).catch(() => { })
+          } catch (e) { }
+        } catch (e) { }
         // send current online list and lastSeen map to the newly connected socket
         try {
           socket.emit('online-list', { online: Array.from(onlineUsers.keys()), lastSeen: Object.fromEntries(lastSeen) })
-        } catch (e) {}
+        } catch (e) { }
         // broadcast to other clients that this user is now online
         try {
           io.emit('user-online', String(payload.id))
-        } catch (e) {}
+        } catch (e) { }
       } catch (e) {
         console.log('socket auth failed', e.message)
         socket.disconnect(true)
@@ -127,7 +160,7 @@ dbConnect().then(()=>{
         const fromAvatar = fromUser?.avatar || null
         const targetSocket = onlineUsers.get(String(to))
 
-        console.log('private message received', { from: fromId, to, workspaceId, content: content ? String(content).slice(0,200) : null, hasFile: !!file })
+        console.log('private message received', { from: fromId, to, workspaceId, content: content ? String(content).slice(0, 200) : null, hasFile: !!file })
 
         // persist message (include file metadata and workspace if provided)
         const payloadDoc = { from: fromId, to, content }
@@ -172,7 +205,7 @@ dbConnect().then(()=>{
         socket.emit('private message', out)
       } catch (err) {
         console.error('private message error', err)
-        try { socket.emit('error', { msg: 'private message failed', error: String(err) }) } catch(e){}
+        try { socket.emit('error', { msg: 'private message failed', error: String(err) }) } catch (e) { }
       }
     })
 
@@ -206,7 +239,7 @@ dbConnect().then(()=>{
     socket.on('join group', (groupId) => {
       try {
         if (groupId) socket.join(String(groupId))
-      } catch (e) {}
+      } catch (e) { }
     })
 
     socket.on('disconnect', () => {
@@ -228,12 +261,12 @@ dbConnect().then(()=>{
             }
           }
         }
-      } catch (e) {}
+      } catch (e) { }
     })
   })
 
-  server.listen(PORT, ()=>{
-    console.log(`server running `+PORT)
+  server.listen(PORT, () => {
+    console.log(`server running ` + PORT)
   })
   server.on('error', (err) => {
     if (err && err.code === 'EADDRINUSE') {

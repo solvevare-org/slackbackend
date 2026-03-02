@@ -1,6 +1,22 @@
 import Workspace from '../models/workspaceModel.js';
 import Group from '../models/groupModel.js';
 import Message from '../models/messageModel.js';
+import multer from 'multer';
+import path from 'path';
+import fs from 'fs';
+
+const storage = multer.diskStorage({
+  destination: (req, file, cb) => {
+    const uploadPath = path.join(process.cwd(), 'BACKEND', 'uploads');
+    if (!fs.existsSync(uploadPath)) fs.mkdirSync(uploadPath, { recursive: true });
+    cb(null, uploadPath);
+  },
+  filename: (req, file, cb) => {
+    cb(null, Date.now() + '-' + file.originalname);
+  }
+});
+
+export const upload = multer({ storage });
 
 // Create a new workspace
 export const createWorkspace = async (req, res) => {
@@ -9,9 +25,14 @@ export const createWorkspace = async (req, res) => {
     if (!name) return res.status(400).json({ success: false, message: 'Name is required' });
     const createdBy = req.user?.id || req.user?._id;
     if (!createdBy) return res.status(401).json({ success: false, message: 'Unauthorized' });
-    // include creator as initial member
-    const workspace = await Workspace.create({ name, description, createdBy, members: [createdBy] });
-    // emit real-time update to the creator if socket is available
+    
+    const workspaceData = { name, description, createdBy, members: [createdBy] };
+    if (req.file) {
+      workspaceData.image = `/uploads/${req.file.filename}`;
+    }
+    
+    const workspace = await Workspace.create(workspaceData);
+    
     try {
       const io = req.app.get('io');
       const onlineUsers = req.app.get('onlineUsers');
@@ -46,7 +67,7 @@ export const getWorkspace = async (req, res) => {
     if (!id) return res.status(400).json({ success: false, message: 'Missing id' })
     const userId = req.user?.id || req.user?._id
     if (!userId) return res.status(401).json({ success: false, message: 'Unauthorized' })
-    const ws = await Workspace.findById(id).populate('members', 'name email Role avatar').populate({ path: 'channels', select: 'name members admins createdAt workspace' })
+    const ws = await Workspace.findById(id).populate('members', 'name email Role avatar').populate({ path: 'channels', select: 'name members admins createdAt workspace image' })
     if (!ws) return res.status(404).json({ success: false, message: 'Not found' })
     // ensure user is member or creator
     const isMember = String(ws.createdBy) === String(userId) || (Array.isArray(ws.members) && ws.members.map((m) => String(m._id || m)).includes(String(userId)))
