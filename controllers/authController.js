@@ -64,7 +64,7 @@ export const googleAuth = async (req, res) => {
     }
 
     // Redirect to Google OAuth
-    const backendUrl = process.env.BACKEND_URL || 'http://localhost:9000';
+    const backendUrl = process.env.BACKEND_URL;
     const redirectUri = encodeURIComponent(`${backendUrl}/api/auth/google/callback`);
     const scope = encodeURIComponent('email profile');
     const googleAuthUrl = `https://accounts.google.com/o/oauth2/v2/auth?client_id=${clientId}&redirect_uri=${redirectUri}&response_type=code&scope=${scope}`;
@@ -88,7 +88,7 @@ export const googleCallback = async (req, res) => {
     }
 
     // Exchange code for tokens
-    const backendUrl = process.env.BACKEND_URL || 'http://localhost:9000';
+    const backendUrl = process.env.BACKEND_URL;
     const tokenResponse = await fetch('https://oauth2.googleapis.com/token', {
       method: 'POST',
       headers: { 'Content-Type': 'application/x-www-form-urlencoded' },

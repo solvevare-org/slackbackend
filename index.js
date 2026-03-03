@@ -34,8 +34,6 @@ app.use((req, res, next) => {
     process.env.FRONTEND_URL,
     "http://localhost:6007",
     "http://localhost:5173",
-    "http://72.60.97.98:6007",
-    "http://127.0.0.1:6007"
   ].filter(Boolean);
 
   if (allowedOrigins.includes(origin) || (origin && origin.startsWith('http://localhost:'))) {
@@ -62,17 +60,17 @@ app.use((req, res, next) => {
 app.use('/api', router)
 // Also mount router at root to support legacy requests to /auth/*
 app.use(router)
-const PORT = process.env.PORT || 9000
+const PORT = process.env.PORT
 dbConnect().then(() => {
   const server = http.createServer(app)
   const io = new Server(server, {
     cors: {
       origin: [
         process.env.FRONTEND_URL,
+        "http://localhost:6003",
         "http://localhost:6007",
         "http://localhost:5173",
         "http://72.60.97.98:6007",
-        "http://127.0.0.1:6007"
       ].filter(Boolean),
       methods: ['GET', 'POST'],
       credentials: true
