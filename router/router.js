@@ -5,6 +5,7 @@ import messageroutes from "../routes/messageroutes.js";
 import grouproutes from "../routes/grouproutes.js";
 import communityroutes from "../routes/communityroutes.js";
 import workspaceroutes from "../routes/workspaceroutes.js";
+import notificationRoutes from "../routes/notificationRoutes.js";
 import path from 'path'
 
 const router=Router()
@@ -21,6 +22,7 @@ router.use("/group", grouproutes)
 
 router.use("/community", communityroutes)
 router.use("/workspaces", workspaceroutes)
+router.use("/notifications", notificationRoutes)
 
 // serve uploaded files
 router.use('/uploads', (req, res, next) => next())

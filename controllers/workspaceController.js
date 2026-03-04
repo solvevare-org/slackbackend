@@ -67,12 +67,16 @@ export const getWorkspace = async (req, res) => {
     if (!id) return res.status(400).json({ success: false, message: 'Missing id' })
     const userId = req.user?.id || req.user?._id
     if (!userId) return res.status(401).json({ success: false, message: 'Unauthorized' })
-    const ws = await Workspace.findById(id).populate('members', 'name email Role avatar').populate({ path: 'channels', select: 'name members admins createdAt workspace image' })
+    const ws = await Workspace.findById(id).populate('members', 'name email Role avatar')
     if (!ws) return res.status(404).json({ success: false, message: 'Not found' })
     // ensure user is member or creator
     const isMember = String(ws.createdBy) === String(userId) || (Array.isArray(ws.members) && ws.members.map((m) => String(m._id || m)).includes(String(userId)))
     if (!isMember) return res.status(403).json({ success: false, message: 'Forbidden' })
-    res.json({ success: true, workspace: ws })
+    // only return channels where user is a member
+    const userChannels = await Group.find({ workspace: id, members: userId }).select('name members admins createdAt workspace image')
+    const wsObj = ws.toObject()
+    wsObj.channels = userChannels
+    res.json({ success: true, workspace: wsObj })
   } catch (err) {
     console.error('getWorkspace', err)
     res.status(500).json({ success: false, message: 'Server error' })

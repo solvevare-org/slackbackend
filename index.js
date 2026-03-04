@@ -93,15 +93,8 @@ dbConnect().then(() => {
   } catch (e) {
     console.error('Failed creating uploads directory', e)
   }
-  // serve uploaded files and force download by setting Content-Disposition
-  app.use('/uploads', express.static(uploadsPath, {
-    setHeaders: (res, filePath) => {
-      try {
-        // force browsers to download attachments rather than open inline
-        res.setHeader('Content-Disposition', 'attachment')
-      } catch (e) { }
-    }
-  }))
+  // serve uploaded files with proper content type
+  app.use('/uploads', express.static(uploadsPath))
 
   io.on('connection', (socket) => {
     console.log('socket connected', socket.id)
@@ -192,11 +185,37 @@ dbConnect().then(() => {
         if (targetSocket && io) {
           if (saved.workspace) {
             const room = io.sockets.adapter.rooms.get(String(saved.workspace))
-            if (room && room.has(targetSocket)) io.to(targetSocket).emit('private message', out)
+            if (room && room.has(targetSocket)) {
+              io.to(targetSocket).emit('private message', out)
+            } else {
+              // Recipient not in workspace room, save notification
+              try {
+                const { createNotification } = await import('./controllers/notificationController.js')
+                await createNotification(to, {
+                  type: 'private',
+                  from: fromId,
+                  workspaceId: saved.workspace,
+                  title: `DM from ${fromName}`,
+                  message: content
+                })
+              } catch (e) {}
+            }
           } else {
             // fallback: send directly
             io.to(targetSocket).emit('private message', out)
           }
+        } else if (!targetSocket && saved.workspace) {
+          // User offline, save notification
+          try {
+            const { createNotification } = await import('./controllers/notificationController.js')
+            await createNotification(to, {
+              type: 'private',
+              from: fromId,
+              workspaceId: saved.workspace,
+              title: `DM from ${fromName}`,
+              message: content
+            })
+          } catch (e) {}
         }
 
         // echo back to sender
@@ -207,7 +226,7 @@ dbConnect().then(() => {
       }
     })
 
-    socket.on('group message', async ({ content, group: groupId }) => {
+    socket.on('group message', async ({ content, group: groupId, file }) => {
       try {
         const fromId = socket.user.id
         const fromUser = await User.findById(fromId).select('name avatar')
@@ -216,18 +235,50 @@ dbConnect().then(() => {
         const group = await Group.findById(groupId)
         if (!group) return
 
+        // Check if user is member of group
+        const isMember = (group.members || []).map(String).includes(String(fromId))
+        if (!isMember) {
+          socket.emit('error', { msg: 'You are not authorized to send messages in this group' })
+          return
+        }
+
         // permission: if community and onlyAdminCanPost true -> check admin
         if (group.type === 'community' && group.onlyAdminCanPost) {
           const isAdmin = (group.admins || []).map(String).includes(String(fromId))
           if (!isAdmin) return
         }
 
-        const gm = new GroupMessage({ from: fromId, group: groupId, content })
+        const payloadDoc = { from: fromId, group: groupId, content }
+        if (file && typeof file === 'object') payloadDoc.file = file
+        const gm = new GroupMessage(payloadDoc)
         const saved = await gm.save()
 
-        const payload = { content, from: fromId, fromName, fromAvatar, group: groupId, createdAt: saved.createdAt }
-        // emit to group room
+        const payload = { content, from: fromId, fromName, fromAvatar, group: groupId, file: saved.file || null, createdAt: saved.createdAt }
+        
+        // Send to all members in the group room
         io.to(String(groupId)).emit('group message', payload)
+        
+        // Save notification for members not in workspace room
+        if (group.workspace) {
+          try {
+            const { createNotification } = await import('./controllers/notificationController.js')
+            const workspaceRoom = io.sockets.adapter.rooms.get(String(group.workspace))
+            for (const memberId of group.members) {
+              if (String(memberId) === String(fromId)) continue
+              const memberSocket = onlineUsers.get(String(memberId))
+              if (!memberSocket || !workspaceRoom || !workspaceRoom.has(memberSocket)) {
+                await createNotification(memberId, {
+                  type: 'group',
+                  from: fromId,
+                  groupId: groupId,
+                  workspaceId: group.workspace,
+                  title: `${fromName} in ${group.name}`,
+                  message: content
+                })
+              }
+            }
+          } catch (e) {}
+        }
       } catch (err) {
         console.error('group message error', err)
       }

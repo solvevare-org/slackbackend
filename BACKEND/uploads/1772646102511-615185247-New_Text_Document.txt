@@ -1,0 +1,5 @@
+Username: rahatrajput786125_db_user
+Password: 2Z56F2NFaryN2cqs
+
+Server: mongodb+srv://rahatrajput786125_db_user:2Z56F2NFaryN2cqs@cluster0.fowufzp.mongodb.net/?appName=Cluster0	
+	

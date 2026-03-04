@@ -1,5 +1,5 @@
 import { Router } from 'express'
-import { createGroup, getGroup, listGroupsForUser, deleteGroup, updateGroup } from '../controllers/groupController.js'
+import { createGroup, getGroup, listGroupsForUser, deleteGroup, updateGroup, updateGroupPicture, removeMember, addMembers } from '../controllers/groupController.js'
 import { getGroupMessages, uploadGroupFile, updateGroupMessage, deleteGroupMessage } from '../controllers/groupMessageController.js'
 import protect from '../middlewares/protect.js'
 import path from 'path'
@@ -22,6 +22,9 @@ router.put('/message/:id', protect, updateGroupMessage)
 router.delete('/message/:id', protect, deleteGroupMessage)
 
 router.put('/:groupId', protect, updateGroup)
+router.put('/:groupId/picture', protect, upload.single('image'), updateGroupPicture)
+router.post('/:groupId/add-members', protect, addMembers)
+router.post('/:groupId/remove-member', protect, removeMember)
 router.delete('/:groupId', protect, deleteGroup)
 
 export default router

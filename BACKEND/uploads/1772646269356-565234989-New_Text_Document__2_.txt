@@ -1,0 +1,58 @@
+    <div className="flex h-full from-[#3f0f40] to-[#2b0a2c] ">
+        {/* SIDEBAR */}
+        
+
+        {/* CHAT */}
+        <div className="flex-1 flex flex-col">
+          <div className="bg-white border-b p-4 font-semibold">
+            {chatUser?.name || "Chat"}
+          </div>
+
+          <div className="flex-1 overflow-y-auto p-4 space-y-3">
+            {messages.map((m, i) => (
+              <div
+                key={i}
+                className={`max-w-md p-3 rounded ${
+                  m.from === myId
+                    ? "bg-purple-200 ml-auto"
+                    : "bg-gray-200"
+                }`}
+              >
+                {m.content && <div>{m.content}</div>}
+                {m.file?.url && (
+                  <a
+                    href={m.file.url}
+                    target="_blank"
+                    className="text-blue-600 underline text-sm"
+                  >
+                    {m.file.filename || "Attachment"}
+                  </a>
+                )}
+              </div>
+            ))}
+            <div ref={bottomRef} />
+          </div>
+
+          <div className="p-4 border-t flex gap-2">
+            <input
+              value={text}
+              onChange={(e) => setText(e.target.value)}
+              onKeyDown={(e) => e.key === "Enter" && sendMessage()}
+              className="flex-1 border rounded px-3 py-2"
+              placeholder="Type a message..."
+            />
+            <input
+              type="file"
+              onChange={(e) =>
+                setFile(e.target.files?.[0] || null)
+              }
+            />
+            <button
+              onClick={sendMessage}
+              className="bg-purple-600 text-white px-4 rounded"
+            >
+              Send
+            </button>
+          </div>
+        </div>
+      </div>
