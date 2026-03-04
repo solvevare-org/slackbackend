@@ -1,22 +1,6 @@
 import Workspace from '../models/workspaceModel.js';
 import Group from '../models/groupModel.js';
 import Message from '../models/messageModel.js';
-import multer from 'multer';
-import path from 'path';
-import fs from 'fs';
-
-const storage = multer.diskStorage({
-  destination: (req, file, cb) => {
-    const uploadPath = path.join(process.cwd(), 'BACKEND', 'uploads');
-    if (!fs.existsSync(uploadPath)) fs.mkdirSync(uploadPath, { recursive: true });
-    cb(null, uploadPath);
-  },
-  filename: (req, file, cb) => {
-    cb(null, Date.now() + '-' + file.originalname);
-  }
-});
-
-export const upload = multer({ storage });
 
 // Create a new workspace
 export const createWorkspace = async (req, res) => {

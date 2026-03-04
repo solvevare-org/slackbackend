@@ -65,17 +65,9 @@ dbConnect().then(() => {
   const server = http.createServer(app)
   const io = new Server(server, {
     cors: {
-      origin: [
-        process.env.FRONTEND_URL,
-        "http://localhost:6003",
-        "http://localhost:6007",
-        "http://localhost:5173",
-        "http://72.60.97.98:6007",
-      ].filter(Boolean),
-      methods: ['GET', 'POST'],
-      credentials: true
-    },
-    transports: ['websocket', 'polling']
+      origin: process.env.FRONTEND_URL || 'http://localhost:5173',
+      methods: ['GET','POST']
+    }
   })
 
   // map of userId -> socketId
@@ -253,32 +245,9 @@ dbConnect().then(() => {
         const gm = new GroupMessage(payloadDoc)
         const saved = await gm.save()
 
-        const payload = { content, from: fromId, fromName, fromAvatar, group: groupId, file: saved.file || null, createdAt: saved.createdAt }
-        
-        // Send to all members in the group room
-        io.to(String(groupId)).emit('group message', payload)
-        
-        // Save notification for members not in workspace room
-        if (group.workspace) {
-          try {
-            const { createNotification } = await import('./controllers/notificationController.js')
-            const workspaceRoom = io.sockets.adapter.rooms.get(String(group.workspace))
-            for (const memberId of group.members) {
-              if (String(memberId) === String(fromId)) continue
-              const memberSocket = onlineUsers.get(String(memberId))
-              if (!memberSocket || !workspaceRoom || !workspaceRoom.has(memberSocket)) {
-                await createNotification(memberId, {
-                  type: 'group',
-                  from: fromId,
-                  groupId: groupId,
-                  workspaceId: group.workspace,
-                  title: `${fromName} in ${group.name}`,
-                  message: content
-                })
-              }
-            }
-          } catch (e) {}
-        }
+        const payload = { id: saved._id, content, from: fromId, fromName, group: groupId, createdAt: saved.createdAt, file: saved.file || null }
+        // emit to group room EXCEPT sender (sender already has message in UI)
+        socket.to(String(groupId)).emit('group message', payload)
       } catch (err) {
         console.error('group message error', err)
       }
