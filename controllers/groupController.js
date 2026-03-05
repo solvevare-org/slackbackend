@@ -162,12 +162,18 @@ export const updateGroup = async (req, res) => {
     g.name = name
     await g.save()
 
-    // Emit system message to group
+    // Emit group name update to all members
     const io = req.app.get('io')
     if (io) {
       const User = (await import('../models/userModel.js')).default
       const adminUser = await User.findById(me).select('name')
       const adminName = adminUser?.name || 'Admin'
+      
+      // Emit to all group members to update channel name in sidebar
+      io.to(String(groupId)).emit('group-name-updated', {
+        groupId: groupId,
+        name: name
+      })
       
       io.to(String(groupId)).emit('group message', {
         id: `system-${Date.now()}`,

@@ -5,7 +5,18 @@ export const getGroupMessages = async (req, res) => {
   try {
     const groupId = req.params.groupId
     const msgs = await GroupMessage.find({ group: groupId }).sort({ createdAt: 1 }).populate('from', 'name avatar')
-    const out = msgs.map(m => ({ id: m._id, from: m.from?._id || m.from, fromName: m.from?.name || '', fromAvatar: m.from?.avatar || null, group: m.group, content: m.content, edited: !!m.edited, file: m.file, createdAt: m.createdAt }))
+    const out = msgs.map(m => ({ 
+      id: m._id, 
+      from: m.from?._id || m.from, 
+      fromName: m.from?.name || '', 
+      fromAvatar: m.from?.avatar || null, 
+      group: m.group, 
+      content: m.content, 
+      edited: !!m.edited, 
+      isSystemMessage: !!m.isSystemMessage,
+      file: m.file, 
+      createdAt: m.createdAt 
+    }))
     res.json({ messages: out })
   } catch (err) {
     console.error('getGroupMessages', err)
