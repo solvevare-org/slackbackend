@@ -46,7 +46,11 @@ export const createNotification = async (userId, data) => {
       workspaceId: data.workspaceId,
       type: data.type,
       from: data.from,
+      fromName: data.fromName,
+      fromAvatar: data.fromAvatar,
       groupId: data.groupId,
+      groupName: data.groupName,
+      groupPicture: data.groupPicture,
       title: data.title,
       message: data.message
     });

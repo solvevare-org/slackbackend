@@ -64,7 +64,10 @@ export const createGroup = async (req, res) => {
                 await createNotification(m, {
                   type: 'group',
                   from: me,
+                  fromName: adminName,
                   groupId: saved._id,
+                  groupName: saved.name,
+                  groupPicture: saved.image?.url || null,
                   workspaceId: workspaceId,
                   title: saved.name,
                   message: `${adminName} created this Channel and add you`
@@ -127,14 +130,66 @@ export const deleteGroup = async (req, res) => {
     const groupId = req.params.groupId
     if (!groupId) return res.status(400).json({ msg: 'Missing id' })
 
-    // require admin
-    if (!ensureAdmin(req)) return res.status(403).json({ msg: 'Forbidden' })
-
     const g = await Group.findById(groupId)
     if (!g) return res.status(404).json({ msg: 'Not found' })
 
+    const me = req.user?.id || req.user?._id
+    const globalRole = (req.user?.role || req.user?.Role || '').toString().toLowerCase()
+    const isGlobalAdmin = globalRole === 'admin'
+    const isGroupAdmin = Array.isArray(g.admins) && g.admins.map(String).includes(String(me))
+    if (!isGlobalAdmin && !isGroupAdmin) return res.status(403).json({ msg: 'Forbidden' })
+
+    // Delete all messages in this group
+    const GroupMessage = (await import('../models/groupMessageModel.js')).default
+    await GroupMessage.deleteMany({ group: groupId })
+
+    // Send notification and emit to all members
+    const io = req.app.get('io')
+    const onlineUsers = req.app.get('onlineUsers')
+    if (io) {
+      const User = (await import('../models/userModel.js')).default
+      const adminUser = await User.findById(me).select('name')
+      const adminName = adminUser?.name || 'Admin'
+      
+      // Emit to group room first before deleting
+      io.to(String(groupId)).emit('channel-deleted', {
+        groupId: g._id,
+        groupName: g.name,
+        adminName
+      })
+      
+      // Send notifications to all members
+      if (onlineUsers) {
+        g.members.forEach(async (memberId) => {
+          if (String(memberId) !== String(me)) {
+            await createNotification(memberId, {
+              type: 'group',
+              from: me,
+              fromName: adminName,
+              groupId: g._id,
+              groupName: g.name,
+              groupPicture: g.image?.url || null,
+              workspaceId: g.workspace,
+              title: g.name,
+              message: `${adminName} deleted ${g.name} channel`
+            })
+            
+            const memberSocket = onlineUsers.get(String(memberId))
+            if (memberSocket) {
+              io.to(memberSocket).emit('channel-deleted-notification', {
+                groupId: g._id,
+                groupName: g.name,
+                adminName,
+                message: `${adminName} deleted ${g.name} channel`
+              })
+            }
+          }
+        })
+      }
+    }
+
     await Group.deleteOne({ _id: groupId })
-    res.json({ msg: 'Deleted' })
+    res.json({ success: true, msg: 'Channel deleted' })
   } catch (err) {
     console.error('deleteGroup', err)
     res.status(500).json({ msg: 'Server error' })
@@ -278,7 +333,10 @@ export const removeMember = async (req, res) => {
       await createNotification(userId, {
         type: 'group',
         from: me,
+        fromName: adminName,
         groupId: g._id,
+        groupName: g.name,
+        groupPicture: g.image?.url || null,
         workspaceId: g.workspace,
         title: g.name,
         message: `${adminName} removed you from ${g.name}`
@@ -365,7 +423,10 @@ export const addMembers = async (req, res) => {
           await createNotification(memberId, {
             type: 'group',
             from: me,
+            fromName: adminName,
             groupId: g._id,
+            groupName: g.name,
+            groupPicture: g.image?.url || null,
             workspaceId: g.workspace,
             title: g.name,
             message: `${adminName} added you to ${g.name}`

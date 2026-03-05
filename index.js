@@ -186,6 +186,8 @@ dbConnect().then(() => {
                 await createNotification(to, {
                   type: 'private',
                   from: fromId,
+                  fromName,
+                  fromAvatar,
                   workspaceId: saved.workspace,
                   title: `DM from ${fromName}`,
                   message: content
@@ -203,6 +205,8 @@ dbConnect().then(() => {
             await createNotification(to, {
               type: 'private',
               from: fromId,
+              fromName,
+              fromAvatar,
               workspaceId: saved.workspace,
               title: `DM from ${fromName}`,
               message: content
