@@ -119,7 +119,7 @@ export const previewInvite = async (req, res) => {
     if (!email || !role) return res.status(400).json({ msg: 'email and role required' })
 
     const token = jwt.sign({ email, role }, INVITE_SECRET, { expiresIn: '24h' })
-    const frontendHost = process.env.FRONTEND_URL || 'http://localhost:5173'
+    const frontendHost = process.env.FRONTEND_URL || 'https://localhost:5173'
     const link = `${frontendHost}/accept-invite?token=${encodeURIComponent(token)}`
     return res.json({ link, token })
   } catch (error) {
@@ -177,7 +177,7 @@ export const acceptInviteRegister = async (req, res) => {
       const refresh = refershtoken(user)
       const access = accessoken(user)
       // set refresh cookie
-      res.cookie('refcookie', refresh, { httpOnly: true })
+      res.cookie('refcookie', refresh, { httpsOnly: true })
       return res.status(201).json({ msg: 'User created', access, user: { id: user._id, email: user.email, name: user.name, role: user.Role } })
     } catch (err) {
       console.error('User create error', err)

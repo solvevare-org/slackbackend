@@ -32,7 +32,7 @@ export const login = async (req, res) => {
     const refresh = refershtoken(result);
     const access = accessoken(result);
 
-    res.cookie("refcookie", refresh, { httpOnly: true });
+    res.cookie("refcookie", refresh, { httpsOnly: true });
 
     res.status(200).json({
       msg: "Login successful",

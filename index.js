@@ -6,7 +6,7 @@ import router from "./router/router.js";
 import dbConnect from "./db/connect.js";
 import cookie from "cookie-parser";
 import cors from "cors";
-import http from 'http'
+import https from 'https'
 import { Server } from 'socket.io'
 import Message from './models/messageModel.js'
 import Group from './models/groupModel.js'
@@ -40,7 +40,7 @@ app.use((req, res, next) => {
    
   ].filter(Boolean);
 
-  if (allowedOrigins.includes(origin) || (origin && origin.startsWith('http://localhost:'))) {
+  if (allowedOrigins.includes(origin) || (origin && origin.startsWith('https://localhost:'))) {
     res.setHeader('Access-Control-Allow-Origin', origin);
   } else if (!origin) {
     // Allow server-to-server
@@ -66,7 +66,7 @@ app.use('/api', router)
 app.use(router)
 const PORT = process.env.PORT
 dbConnect().then(() => {
-  const server = http.createServer(app)
+  const server = https.createServer(app)
   const io = new Server(server, {
     cors: {
       origin: process.env.FRONTEND_URL ,

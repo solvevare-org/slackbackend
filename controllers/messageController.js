@@ -172,7 +172,7 @@ export const uploadFile = async (req, res) => {
 
     const file = req.file
     // use protocol-relative URL so the browser will load using whichever scheme the page was served over
-    // this avoids mixed-content errors when the frontend is HTTPS but backend sees HTTP requests
+    // this avoids mixed-content errors when the frontend is httpsS but backend sees https requests
     const url = `/uploads/${file.filename}`
 
     // Generate thumbnail for PDF
