@@ -26,13 +26,26 @@ export const getMessagesBetween = async (req, res) => {
 
     console.log('getMessagesBetween:', { meId, otherId, workspaceId })
 
-    const msgs = await Message.find({
+    const limit = parseInt(req.query.limit) || 0;
+    // build base filter
+    let query = Message.find({
       workspace: workspaceId,
       $or: [
         { from: meId, to: otherId },
         { from: otherId, to: meId }
       ]
-    }).sort({ createdAt: 1 }).populate('from', 'name avatar').populate('to', 'name avatar')
+    });
+    if (limit > 0) {
+      query = query.sort({ createdAt: -1 }).limit(limit);
+    } else {
+      query = query.sort({ createdAt: 1 });
+    }
+    query = query.populate('from', 'name avatar').populate('to', 'name avatar');
+    let msgs = await query;
+    if (limit > 0) {
+      // reverse so results are ascending even when limited
+      msgs = msgs.reverse();
+    }
 
     console.log('getMessagesBetween: found', Array.isArray(msgs) ? msgs.length : 0)
 
@@ -158,7 +171,9 @@ export const uploadFile = async (req, res) => {
     if (!req.file) return res.status(400).json({ msg: 'File required' })
 
     const file = req.file
-    const url = `${req.protocol}://${req.get('host')}/uploads/${file.filename}`
+    // use protocol-relative URL so the browser will load using whichever scheme the page was served over
+    // this avoids mixed-content errors when the frontend is HTTPS but backend sees HTTP requests
+    const url = `/uploads/${file.filename}`
 
     // Generate thumbnail for PDF
     let thumbnailUrl = null
@@ -173,7 +188,7 @@ export const uploadFile = async (req, res) => {
         console.log('Generating PDF thumbnail:', { pdfPath, thumbnailPath })
         const thumbnail = await pdfThumbnail(pdfPath, { width: 280, height: 128 })
         fs.writeFileSync(thumbnailPath, thumbnail)
-        thumbnailUrl = `${req.protocol}://${req.get('host')}/uploads/${thumbnailFilename}`
+        thumbnailUrl = `/uploads/${thumbnailFilename}`
         console.log('PDF thumbnail generated:', thumbnailUrl)
       } catch (err) {
         console.error('PDF thumbnail generation failed:', err)

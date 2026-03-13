@@ -95,7 +95,7 @@ export const uploadGroupFile = async (req, res) => {
     }
 
     const file = req.file
-    const url = `${req.protocol}://${req.get('host')}/uploads/${file.filename}`
+    const url = `/uploads/${file.filename}`
     const gm = new GroupMessage({ from: me, group: groupId, content: file.originalname, file: { url, filename: file.filename, mimetype: file.mimetype, size: file.size } })
     const saved = await gm.save()
 

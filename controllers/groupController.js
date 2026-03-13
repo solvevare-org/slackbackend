@@ -34,7 +34,9 @@ export const createGroup = async (req, res) => {
     })
 
     if (req.file) {
-      const url = `${req.protocol}://${req.get('host')}/uploads/${req.file.filename}`
+      // protocol-relative path ensures whatever scheme served the page is used
+      // store a relative path; frontend will prefix using BACKEND_URL/API_URL
+      const url = `/uploads/${req.file.filename}`
       group.image = { url, filename: req.file.filename }
     }
 
@@ -262,7 +264,7 @@ export const updateGroupPicture = async (req, res) => {
     const isGroupAdmin = Array.isArray(g.admins) && g.admins.map(String).includes(String(me))
     if (!isGlobalAdmin && !isGroupAdmin) return res.status(403).json({ msg: 'Forbidden' })
 
-    const url = `${req.protocol}://${req.get('host')}/uploads/${req.file.filename}`
+    const url = `/uploads/${req.file.filename}`
     g.image = { url, filename: req.file.filename }
     await g.save()
 

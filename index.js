@@ -23,6 +23,11 @@ const __dirname = path.dirname(__filename)
 
 dotenv.config({ path: path.join(__dirname, '.env') })
 const app = express()
+
+// trust proxy so req.protocol reflects the original client protocol when behind a load
+// balancer / reverse proxy (needed for accurate URL generation in cloud/ssl setups)
+app.set('trust proxy', true)
+
 app.use(express.json())
 app.use(cookie())
 
@@ -65,7 +70,7 @@ dbConnect().then(() => {
   const server = http.createServer(app)
   const io = new Server(server, {
     cors: {
-      origin: process.env.FRONTEND_URL || 'http://localhost:5173',
+      origin: process.env.FRONTEND_URL ,
       methods: ['GET','POST']
     }
   })

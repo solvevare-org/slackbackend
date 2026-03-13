@@ -44,7 +44,8 @@ export const uploadAvatar = async (req, res) => {
         const id = req.params.id
         if (!req.file) return res.status(400).json({ msg: 'File required' })
         const file = req.file
-        const url = `${req.protocol}://${req.get('host')}/uploads/${file.filename}`
+        // store relative path; frontend will resolve it against the API host
+        const url = `/uploads/${file.filename}`
         const updated = await User.findByIdAndUpdate(id, { avatar: url }, { new: true }).select('-password')
         res.json({ msg: 'avatar updated', user: updated })
     } catch (err) {
