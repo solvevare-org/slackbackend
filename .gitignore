@@ -3,5 +3,5 @@ node_modules/
 .DS_Store
 npm-debug.log
 yarn-error.log
-BACKEND/uploads/
+BACKEND${API_URL}/uploads/
 *.rar

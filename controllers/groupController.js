@@ -39,6 +39,7 @@ export const createGroup = async (req, res) => {
       const url = `/uploads/${req.file.filename}`
       group.image = { url, filename: req.file.filename }
     }
+    
 
     const saved = await group.save()
 
