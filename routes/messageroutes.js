@@ -1,6 +1,6 @@
 import { Router } from "express";
 import protect from "../middlewares/protect.js";
-import { getMessagesBetween, updateMessage, deleteMessage } from "../controllers/messageController.js";
+import { getMessagesBetween, updateMessage, deleteMessage, forwardMessage } from "../controllers/messageController.js";
 import multer from 'multer'
 import path from 'path'
 
@@ -10,6 +10,7 @@ const router = Router()
 router.get('/:userId', protect, getMessagesBetween)
 router.put('/:id', protect, updateMessage)
 router.delete('/:id', protect, deleteMessage)
+router.post('/forward', protect, forwardMessage)
 
 
 

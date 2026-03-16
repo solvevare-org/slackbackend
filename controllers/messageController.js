@@ -160,6 +160,79 @@ export const deleteMessage = async (req, res) => {
   }
 }
 
+export const forwardMessage = async (req, res) => {
+  try {
+    const meId = req.user?.id || req.user?._id
+    if (!meId) return res.status(401).json({ msg: 'Unauthorized' })
+
+    const { content, originalSenderName, targets, workspaceId, file } = req.body
+    if (!Array.isArray(targets) || targets.length === 0)
+      return res.status(400).json({ msg: 'targets required' })
+
+    const io = req.app.get('io')
+    const onlineUsers = req.app.get('onlineUsers')
+    const forwarderUser = await User.findById(meId).select('name avatar')
+
+    // Build forwarded content
+    const forwardedLabel = `<span class="forwarded-label">Forwarded from <b>${originalSenderName || 'Unknown'}</b></span>`
+    let forwardedContent = ''
+    if (!file) {
+      forwardedContent = `<div class="forwarded-msg">${forwardedLabel}<br/>${content || ''}</div>`
+    }
+
+    const results = []
+    for (const target of targets) {
+      if (target.type === 'dm') {
+        const payload = { from: meId, to: target.id, workspace: workspaceId || undefined }
+        if (file) {
+          payload.content = `<div class="forwarded-msg">${forwardedLabel}<br/>${file.filename || 'Forwarded file'}</div>`
+          payload.file = { url: file.url, filename: file.filename, mimetype: file.mimetype, size: file.size }
+        } else {
+          payload.content = forwardedContent
+        }
+        const m = new Message(payload)
+        const saved = await m.save()
+        const out = {
+          id: saved._id, from: String(meId), fromName: forwarderUser?.name || '', fromAvatar: forwarderUser?.avatar || null,
+          to: String(target.id), content: saved.content, file: saved.file || null,
+          workspace: saved.workspace ? String(saved.workspace) : null, createdAt: saved.createdAt
+        }
+        const targetSocket = onlineUsers.get(String(target.id))
+        if (targetSocket && io) {
+          if (saved.workspace) {
+            const room = io.sockets.adapter.rooms.get(String(saved.workspace))
+            if (room && room.has(targetSocket)) io.to(targetSocket).emit('private message', out)
+          } else {
+            io.to(targetSocket).emit('private message', out)
+          }
+        }
+        results.push(out)
+      } else if (target.type === 'group') {
+        const payload = { from: meId, group: target.id }
+        if (file) {
+          payload.content = `<div class="forwarded-msg">${forwardedLabel}<br/>${file.filename || 'Forwarded file'}</div>`
+          payload.file = { url: file.url, filename: file.filename, mimetype: file.mimetype, size: file.size }
+        } else {
+          payload.content = forwardedContent
+        }
+        const gm = new GroupMessage(payload)
+        const saved = await gm.save()
+        const out = {
+          id: saved._id, from: String(meId), fromName: forwarderUser?.name || '', fromAvatar: forwarderUser?.avatar || null,
+          group: String(target.id), content: saved.content, file: saved.file || null, createdAt: saved.createdAt
+        }
+        if (io) io.to(String(target.id)).emit('group message', out)
+        results.push(out)
+      }
+    }
+
+    return res.json({ success: true, forwarded: results.length })
+  } catch (err) {
+    console.error('forwardMessage error', err)
+    return res.status(500).json({ msg: 'Server error' })
+  }
+}
+
 export const uploadFile = async (req, res) => {
   try {
     const meId = req.user?.id || req.user?._id
