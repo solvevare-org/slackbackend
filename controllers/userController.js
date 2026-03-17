@@ -11,10 +11,49 @@ export const getuser=async(req,res)=>{
 
 export const updateuser=async(req,res)=>{
     try {
-      const id=req.params.id 
+      const id=req.params.id
       const updata=req.body
-     const newuser=await User.findByIdAndUpdate(id,updata,{new:true})
-     res.json({msg:"data update successfull",data:newuser})
+      // only admin can change Role
+      let roleChanged = false
+      let oldRole = null
+      let newRole = null
+      if (updata.Role !== undefined) {
+        const requesterRole = (req.user?.role || req.user?.Role || '').toString().toLowerCase()
+        if (requesterRole !== 'admin') {
+          delete updata.Role
+        } else {
+          const existing = await User.findById(id).select('Role').lean()
+          if (existing && existing.Role !== updata.Role) {
+            roleChanged = true
+            oldRole = existing.Role
+            newRole = updata.Role
+          }
+        }
+      }
+      const newuser=await User.findByIdAndUpdate(id,updata,{new:true}).select('-password')
+
+      // emit real-time role update + save notification
+      if (roleChanged && newRole) {
+        try {
+          const io = req.app.get('io')
+          const onlineUsers = req.app.get('onlineUsers')
+          const socketId = onlineUsers && onlineUsers.get(String(id))
+          if (io && socketId) {
+            io.to(socketId).emit('role-updated', { userId: String(id), newRole, oldRole })
+          }
+          // save notification
+          const { createNotification } = await import('./notificationController.js')
+          const workspaceId = req.body.workspaceId || req.headers['x-workspace-id'] || null
+          await createNotification(id, {
+            type: 'system',
+            workspaceId,
+            title: `Your role has been updated`,
+            message: `Now Your Role is "${newRole}". Your Previous Role is "${oldRole}".`
+          })
+        } catch(e) { console.error('role update notify error', e) }
+      }
+
+      res.json({msg:"data update successfull",data:newuser})
     } catch (error) {
         res.json({msg:error})
     }
