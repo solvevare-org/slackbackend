@@ -53,6 +53,9 @@ export const getWorkspace = async (req, res) => {
     if (!userId) return res.status(401).json({ success: false, message: 'Unauthorized' })
     const ws = await Workspace.findById(id).populate('members', 'name email Role avatar')
     if (!ws) return res.status(404).json({ success: false, message: 'Not found' })
+    
+    console.log('Workspace found:', ws.name, 'Members count:', ws.members?.length || 0);
+    
     // ensure user is member or creator
     const isMember = String(ws.createdBy) === String(userId) || (Array.isArray(ws.members) && ws.members.map((m) => String(m._id || m)).includes(String(userId)))
     if (!isMember) return res.status(403).json({ success: false, message: 'Forbidden' })
@@ -60,6 +63,7 @@ export const getWorkspace = async (req, res) => {
     const userChannels = await Group.find({ workspace: id, members: userId }).select('name members admins createdAt workspace image')
     const wsObj = ws.toObject()
     wsObj.channels = userChannels
+    console.log('Returning workspace with', wsObj.members?.length || 0, 'members');
     res.json({ success: true, workspace: wsObj })
   } catch (err) {
     console.error('getWorkspace', err)
@@ -110,6 +114,56 @@ export const deleteWorkspace = async (req, res) => {
     res.json({ success: true, msg: 'Workspace deleted successfully' });
   } catch (err) {
     console.error('deleteWorkspace', err);
+    res.status(500).json({ success: false, msg: 'Server error' });
+  }
+};
+
+// Remove member from workspace (and all its channels)
+export const removeWorkspaceMember = async (req, res) => {
+  try {
+    const workspaceId = req.params.workspaceId;
+    const userId = req.params.userId;
+    
+    if (!workspaceId || !userId) {
+      return res.status(400).json({ success: false, msg: 'Missing parameters' });
+    }
+    
+    const userRole = (req.user?.Role || req.user?.role || '').toString().toLowerCase();
+    if (userRole !== 'admin') {
+      return res.status(403).json({ success: false, msg: 'Only admins can remove members' });
+    }
+    
+    const ws = await Workspace.findById(workspaceId);
+    if (!ws) {
+      return res.status(404).json({ success: false, msg: 'Workspace not found' });
+    }
+    
+    // Remove user from workspace members
+    ws.members = ws.members.filter(m => String(m) !== String(userId));
+    await ws.save();
+    
+    // Remove user from all channels in this workspace
+    const channels = await Group.find({ workspace: workspaceId });
+    for (const channel of channels) {
+      channel.members = channel.members.filter(m => String(m) !== String(userId));
+      channel.admins = channel.admins.filter(a => String(a) !== String(userId));
+      await channel.save();
+    }
+    
+    // Notify user that they were removed from workspace
+    try {
+      const io = req.app.get('io');
+      const onlineUsers = req.app.get('onlineUsers');
+      const userSocket = onlineUsers && onlineUsers.get(String(userId));
+      
+      if (io && userSocket) {
+        io.to(userSocket).emit('removed-from-workspace', { workspaceId });
+      }
+    } catch (e) {}
+    
+    res.json({ success: true, msg: 'Member removed successfully' });
+  } catch (err) {
+    console.error('removeWorkspaceMember', err);
     res.status(500).json({ success: false, msg: 'Server error' });
   }
 };

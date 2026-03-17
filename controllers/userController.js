@@ -44,12 +44,24 @@ export const updateuser=async(req,res)=>{
           // save notification
           const { createNotification } = await import('./notificationController.js')
           const workspaceId = req.body.workspaceId || req.headers['x-workspace-id'] || null
-          await createNotification(id, {
+          const notification = await createNotification(id, {
             type: 'system',
             workspaceId,
             title: `Your role has been updated`,
             message: `Now Your Role is "${newRole}". Your Previous Role is "${oldRole}".`
           })
+          
+          // emit real-time notification to user if online
+          if (io && socketId && notification) {
+            io.to(socketId).emit('new-notification', {
+              _id: notification._id,
+              type: 'system',
+              title: notification.title,
+              message: notification.message,
+              workspaceId: notification.workspaceId,
+              createdAt: notification.createdAt
+            })
+          }
         } catch(e) { console.error('role update notify error', e) }
       }
 

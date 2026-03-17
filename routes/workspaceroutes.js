@@ -1,7 +1,7 @@
 import express from 'express';
 import multer from 'multer';
 import path from 'path';
-import { createWorkspace, getWorkspaces, getWorkspace, deleteWorkspace } from '../controllers/workspaceController.js';
+import { createWorkspace, getWorkspaces, getWorkspace, deleteWorkspace, removeWorkspaceMember } from '../controllers/workspaceController.js';
 import protect from '../middlewares/protect.js';
 
 const router = express.Router();
@@ -15,6 +15,9 @@ router.post('/', protect, upload.single('image'), createWorkspace);
 
 // Get all workspaces
 router.get('/', protect, getWorkspaces);
+
+// Remove member from workspace (admin only)
+router.delete('/:workspaceId/members/:userId', protect, removeWorkspaceMember);
 
 // Get single workspace
 router.get('/:id', protect, getWorkspace);
