@@ -1,5 +1,6 @@
 import { Router } from "express";
 import { login, refresh, register } from "../controllers/authController.js";
+import { sendForgotPasswordOtp, verifyOtpAndResetPassword } from "../controllers/authController.js";
 import validate from "../middlewares/validate.js";
 import userzodschema from "../models/zod/userzodschema.js";
 import protect from "../middlewares/protect.js";
@@ -19,4 +20,7 @@ authroutes.get('/invite/validate', validateInvite)
 authroutes.post('/invite/accept', acceptInviteRegister)
 authroutes.post('/invite/accept-existing', protect, acceptInviteExisting)
 authroutes.get('/invite/preview', protect, previewInvite)
+// forgot password
+authroutes.post('/forgot-password/send-otp', sendForgotPasswordOtp)
+authroutes.post('/forgot-password/verify', verifyOtpAndResetPassword)
 export default authroutes

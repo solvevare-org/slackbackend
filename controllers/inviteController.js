@@ -14,21 +14,29 @@ export const createInvite = async (req, res) => {
     if (requesterRole !== 'admin') return res.status(403).json({ msg: 'Only admins can invite' })
     if (!email || !role) return res.status(400).json({ msg: "email and role required" })
 
+    const emailNorm = String(email).toLowerCase()
+
     // if workspaceId provided, verify requester is workspace creator or global admin
     if (workspaceId) {
       try {
         const Workspace = (await import('../models/workspaceModel.js')).default
-        const ws = await Workspace.findById(workspaceId).select('createdBy').lean()
+        const ws = await Workspace.findById(workspaceId).select('createdBy members').lean()
         if (!ws) return res.status(400).json({ msg: 'Workspace not found' })
         const isCreator = String(ws.createdBy) === String(req.user?.id || req.user?._id)
         if (!isCreator && requesterRole !== 'admin') return res.status(403).json({ msg: 'Forbidden to invite to this workspace' })
+
+        // Check if user with this email already exists in workspace
+        const existingUser = await User.findOne({ email: emailNorm }).select('_id').lean()
+        if (existingUser) {
+          const alreadyMember = ws.members.some(m => String(m) === String(existingUser._id))
+          if (alreadyMember) return res.status(400).json({ msg: 'Invited user is Already in your Workspace' })
+        }
       } catch (e) {
         console.error('workspace check error', e)
       }
     }
 
     // create token valid for 24h
-    const emailNorm = String(email).toLowerCase()
     const tokenPayload = { email: emailNorm, role }
     if (workspaceId) tokenPayload.workspaceId = workspaceId
     const token = jwt.sign(tokenPayload, INVITE_SECRET, { expiresIn: '24h' })
@@ -222,7 +230,12 @@ export const acceptInviteExisting = async (req, res) => {
       const workspaceId = payload.workspaceId || invite.workspace;
       if (workspaceId) {
         const Workspace = (await import('../models/workspaceModel.js')).default;
-        const ws = await Workspace.findByIdAndUpdate(workspaceId, { $addToSet: { members: userId } }, { new: true }).select('name').lean();
+        const ws = await Workspace.findById(workspaceId).select('members name').lean();
+        // Check if user already a member
+        const alreadyMember = ws?.members?.some(m => String(m) === String(userId));
+        if (alreadyMember) return res.status(400).json({ msg: 'You are Already Accepted invite in this Workspace' });
+
+        const updatedWs = await Workspace.findByIdAndUpdate(workspaceId, { $addToSet: { members: userId } }, { new: true }).select('name').lean();
         // mark invite used
         invite.used = true;
         await invite.save();
@@ -233,7 +246,7 @@ export const acceptInviteExisting = async (req, res) => {
           if (io) io.to(String(workspaceId)).emit('workspace-member-added', { user: { id: userId } });
         } catch (e) {}
 
-        return res.json({ msg: 'User added to workspace', workspaceId, workspaceName: ws?.name });
+        return res.json({ msg: 'User added to workspace', workspaceId, workspaceName: updatedWs?.name });
       }
 
       // If no workspace targeted, simply mark invite used and respond

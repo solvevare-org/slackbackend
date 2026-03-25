@@ -83,7 +83,7 @@ export const deleteuser=async(req,res)=>{
 export const getuserbyid=async(req,res)=>{
    try {
   const id= req.params.id
- const data=await User.findById(id)
+ const data=await User.findById(id).select('-password')
  res.json({user:data})
    } catch (error) {
     res.json({msg:error})
