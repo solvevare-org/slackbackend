@@ -33,13 +33,11 @@ app.use(cookie())
 
 app.use((req, res, next) => {
   const origin = req.headers.origin;
-  console.log(`[CORS DEBUG] Request from Origin: ${origin} | Method: ${req.method} | URL: ${req.url}`);
 
   const allowedOrigins = [
     process.env.FRONTEND_URL,
     'http://localhost:6007'
   ].filter(Boolean);
-  console.log(process.env.FRONTEND_URL);
 
   if (allowedOrigins.includes(origin) || (origin && (origin.startsWith('https://localhost:') || origin.startsWith('http://localhost:')))) {
     res.setHeader('Access-Control-Allow-Origin', origin);
@@ -79,6 +77,8 @@ dbConnect().then(() => {
   const onlineUsers = new Map()
   // map of userId -> lastSeen timestamp (ms)
   const lastSeen = new Map()
+  // cache userId -> { name, avatar } to avoid DB hit on every message
+  const userCache = new Map()
   // expose io and onlineUsers to app for route handlers
   app.set('io', io)
   app.set('onlineUsers', onlineUsers)
@@ -143,9 +143,17 @@ dbConnect().then(() => {
     socket.on('private message', async ({ content, to, file, workspaceId }) => {
       try {
         const fromId = socket.user.id
-        const fromUser = await User.findById(fromId).select('name avatar')
-        const fromName = fromUser?.name || ''
-        const fromAvatar = fromUser?.avatar || null
+        // use cache to avoid DB hit on every message
+        let fromName = '', fromAvatar = null
+        if (userCache.has(String(fromId))) {
+          const cached = userCache.get(String(fromId))
+          fromName = cached.name; fromAvatar = cached.avatar
+        } else {
+          const fromUser = await User.findById(fromId).select('name avatar').lean()
+          fromName = fromUser?.name || ''
+          fromAvatar = fromUser?.avatar || null
+          userCache.set(String(fromId), { name: fromName, avatar: fromAvatar })
+        }
         const targetSocket = onlineUsers.get(String(to))
 
         console.log('private message received', { from: fromId, to, workspaceId, content: content ? String(content).slice(0, 200) : null, hasFile: !!file })
@@ -230,9 +238,16 @@ dbConnect().then(() => {
     socket.on('group message', async ({ content, group: groupId, file }) => {
       try {
         const fromId = socket.user.id
-        const fromUser = await User.findById(fromId).select('name avatar')
-        const fromName = fromUser?.name || ''
-        const fromAvatar = fromUser?.avatar || null
+        let fromName = '', fromAvatar = null
+        if (userCache.has(String(fromId))) {
+          const cached = userCache.get(String(fromId))
+          fromName = cached.name; fromAvatar = cached.avatar
+        } else {
+          const fromUser = await User.findById(fromId).select('name avatar').lean()
+          fromName = fromUser?.name || ''
+          fromAvatar = fromUser?.avatar || null
+          userCache.set(String(fromId), { name: fromName, avatar: fromAvatar })
+        }
         const group = await Group.findById(groupId)
         if (!group) return
 

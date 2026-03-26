@@ -14,5 +14,8 @@ const groupMessageSchema = new Schema({
   createdAt: { type: Date, default: Date.now }
 })
 
+// Index for fast group message queries
+groupMessageSchema.index({ group: 1, createdAt: 1 })
+
 const GroupMessage = model('groupmessage', groupMessageSchema)
 export default GroupMessage

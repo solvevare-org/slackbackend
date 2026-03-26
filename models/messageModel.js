@@ -15,5 +15,9 @@ const messageSchema = new Schema({
   }
 }, { timestamps: true })
 
+// Indexes for fast DM queries
+messageSchema.index({ workspace: 1, from: 1, to: 1, createdAt: 1 })
+messageSchema.index({ workspace: 1, to: 1, from: 1, createdAt: 1 })
+
 const Message = model('message', messageSchema)
 export default Message

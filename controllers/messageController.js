@@ -13,70 +13,35 @@ export const getMessagesBetween = async (req, res) => {
     const meId = req.user?.id || req.user?._id
     const otherId = req.params.userId
     const workspaceId = req.query.workspaceId || req.body?.workspaceId
-
-    if (!meId) {
-      console.warn('getMessagesBetween: missing auth user')
-      return res.status(401).json({ msg: 'Unauthorized' })
-    }
-
-    // require workspace scoping for DMs
-    if (!workspaceId) {
-      return res.status(400).json({ msg: 'workspaceId required' })
-    }
-
-    console.log('getMessagesBetween:', { meId, otherId, workspaceId })
+    if (!meId) return res.status(401).json({ msg: 'Unauthorized' })
+    if (!workspaceId) return res.status(400).json({ msg: 'workspaceId required' })
 
     const limit = parseInt(req.query.limit) || 0;
-    // build base filter
     let query = Message.find({
       workspace: workspaceId,
-      $or: [
-        { from: meId, to: otherId },
-        { from: otherId, to: meId }
-      ]
+      $or: [{ from: meId, to: otherId }, { from: otherId, to: meId }]
     });
-    if (limit > 0) {
-      query = query.sort({ createdAt: -1 }).limit(limit);
-    } else {
-      query = query.sort({ createdAt: 1 });
-    }
-    query = query.populate('from', 'name avatar').populate('to', 'name avatar');
+    query = limit > 0
+      ? query.sort({ createdAt: -1 }).limit(limit)
+      : query.sort({ createdAt: 1 });
+    query = query.populate('from', 'name avatar').populate('to', 'name avatar').lean();
     let msgs = await query;
-    if (limit > 0) {
-      // reverse so results are ascending even when limited
-      msgs = msgs.reverse();
-    }
+    if (limit > 0) msgs = msgs.reverse();
 
-    console.log('getMessagesBetween: found', Array.isArray(msgs) ? msgs.length : 0)
-
-    // map messages to include sender name and timestamp
-    const out = msgs.map(m => {
-      const fromObj = m.from
-      const toObj = m.to
-      const fromId = fromObj?._id || fromObj
-      const fromName = fromObj?.name || ''
-      const fromAvatar = fromObj?.avatar || null
-      const toId = toObj?._id || toObj
-      const toName = toObj?.name || ''
-      const toAvatar = toObj?.avatar || null
-      return {
-        id: m._id,
-        from: fromId,
-        fromName,
-        fromAvatar,
-        to: toId,
-        toName,
-        toAvatar,
-        content: m.content,
-        edited: !!m.edited,
-        file: m.file || null,
-        workspace: m.workspace ? String(m.workspace) : null,
-        createdAt: m.createdAt
-      }
-    })
+    const out = msgs.map(m => ({
+      id: m._id,
+      from: m.from?._id || m.from,
+      fromName: m.from?.name || '',
+      fromAvatar: m.from?.avatar || null,
+      to: m.to?._id || m.to,
+      content: m.content,
+      edited: !!m.edited,
+      file: m.file || null,
+      workspace: m.workspace ? String(m.workspace) : null,
+      createdAt: m.createdAt
+    }))
     res.json({ messages: out })
   } catch (error) {
-    console.error('getMessagesBetween error', error)
     res.status(500).json({ msg: 'Server error' })
   }
 }

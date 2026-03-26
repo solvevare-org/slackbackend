@@ -8,9 +8,12 @@ const dbConnect = async () => {
             process.exit(1);
         }
 
-        // use new connection
         await mongoose.connect(uri, {
-            // keep defaults, modern mongoose handles options
+            maxPoolSize: 10,        // connection pool - reuse connections
+            serverSelectionTimeoutMS: 5000,
+            socketTimeoutMS: 45000,
+            connectTimeoutMS: 10000,
+            bufferCommands: false,  // fail fast instead of buffering
         });
 
         console.log('MongoDB connected');
@@ -25,7 +28,6 @@ const dbConnect = async () => {
 
     } catch (error) {
         console.error('Failed to connect to MongoDB:', error);
-        // exit process when DB connection fails at startup
         process.exit(1);
     }
 };

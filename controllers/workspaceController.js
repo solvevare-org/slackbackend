@@ -51,22 +51,20 @@ export const getWorkspace = async (req, res) => {
     if (!id) return res.status(400).json({ success: false, message: 'Missing id' })
     const userId = req.user?.id || req.user?._id
     if (!userId) return res.status(401).json({ success: false, message: 'Unauthorized' })
-    const ws = await Workspace.findById(id).populate('members', 'name email Role avatar')
+    
+    // Run both queries in parallel
+    const [ws, userChannels] = await Promise.all([
+      Workspace.findById(id).populate('members', 'name email Role avatar').lean(),
+      Group.find({ workspace: id, members: userId }).select('name members admins createdAt workspace image').lean()
+    ])
+    
     if (!ws) return res.status(404).json({ success: false, message: 'Not found' })
-    
-    console.log('Workspace found:', ws.name, 'Members count:', ws.members?.length || 0);
-    
-    // ensure user is member or creator
     const isMember = String(ws.createdBy) === String(userId) || (Array.isArray(ws.members) && ws.members.map((m) => String(m._id || m)).includes(String(userId)))
     if (!isMember) return res.status(403).json({ success: false, message: 'Forbidden' })
-    // only return channels where user is a member
-    const userChannels = await Group.find({ workspace: id, members: userId }).select('name members admins createdAt workspace image')
-    const wsObj = ws.toObject()
-    wsObj.channels = userChannels
-    console.log('Returning workspace with', wsObj.members?.length || 0, 'members');
-    res.json({ success: true, workspace: wsObj })
+    
+    ws.channels = userChannels
+    res.json({ success: true, workspace: ws })
   } catch (err) {
-    console.error('getWorkspace', err)
     res.status(500).json({ success: false, message: 'Server error' })
   }
 }
